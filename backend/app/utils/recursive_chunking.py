@@ -32,15 +32,15 @@
 
 # # def split_headings(text:str) -> List[str]:
    
-    pattern = r'(?=\n#{1,6}\s)|(?=\n[A-Z][A-Z\s]{5,}\n)'#using regex to find pattern which can form headings
-    sections = re.split(pattern, text)
-    return [s.strip() for s in sections if s.strip()]#saving in list and removing empty sections and extra whitespace
+#     pattern = r'(?=\n#{1,6}\s)|(?=\n[A-Z][A-Z\s]{5,}\n)'#using regex to find pattern which can form headings
+#     sections = re.split(pattern, text)
+#     return [s.strip() for s in sections if s.strip()]#saving in list and removing empty sections and extra whitespace
 
 
-def split_paragraphs(text:str) -> List[str]:
-    # Split text into paragraphs based on double newlines
-    paragraphs = text.split('\n\n')
-    return [p.strip() for p in paragraphs if p.strip()]
+# def split_paragraphs(text:str) -> List[str]:
+#     # Split text into paragraphs based on double newlines
+#     paragraphs = text.split('\n\n')
+#     return [p.strip() for p in paragraphs if p.strip()]
 
 
 # # def build_chunks(
@@ -370,14 +370,28 @@ if __name__ == "__main__":
 # ## Section One
 # This is paragraph one. It explains something important.
 
-This is paragraph two. It continues the explanation. It has multiple sentences.
+# This is paragraph two. It continues the explanation. It has multiple sentences.
 
 # ## Section Two
 # Another section starts here. It also has useful information.
 # """
 
-    chunks = build_chunks(sample_text, max_tokens=500, overlap_ratio=0.12)
+    # chunks = build_chunks(sample_text, max_tokens=500, overlap_ratio=0.12)
 
-    for i, chunk in enumerate(chunks):
-        print(f"\n--- Chunk {i+1} ({count_tokens(chunk)} tokens) ---\n")
-        print(chunk)
+    # for i, chunk in enumerate(chunks):
+    #     print(f"\n--- Chunk {i+1} ({count_tokens(chunk)} tokens) ---\n")
+    #     print(chunk)
+    folder_path = os.path.join(os.path.dirname(__file__), "../uploads")
+    if os.path.exists(folder_path):
+        docs = text_processing.load_folder(folder_path)
+        if docs:
+            print(f"\n\n=== Testing with PDF Files ({len(docs)} documents) ===")
+            for doc in docs:
+                print(f"\n--- Processing: {doc['metadata']['file_name']} ---")
+                chunks = build_chunks(doc['text'])
+                print(f"Generated {len(chunks)} chunks")
+                if chunks:
+                    for i in range(20):  # Print first 3 chunks as a sample
+                        print(f"\n--- Sample Chunk {i + 1} ---\n")
+                        print(chunks[i][:200] + "...")  # Print first 200 chars of each chunk
+                    print(f"Sample Chunk:\n{chunks[1][:200]}...")
