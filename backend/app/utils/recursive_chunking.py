@@ -244,151 +244,178 @@ Supports: PDFs, raw text, code, logs, mixed documents
 Author: HelioX Pipeline
 """
 
-from typing import List, Dict
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from typing import List, Dict
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-# ---------------------------------------------------
-# 🔍 Step 1: Detect Document Type
-# ---------------------------------------------------
+# # ---------------------------------------------------
+# # 🔍 Step 1: Detect Document Type
+# # ---------------------------------------------------
 
-def detect_doc_type(text: str) -> str:
-    """
-    Detects the type of document based on content.
-    """
+# def detect_doc_type(text: str) -> str:
+#     """
+#     Detects the type of document based on content.
+#     """
 
-    text_sample = text[:1000]  # analyze only first part
+#     text_sample = text[:1000]  # analyze only first part
 
-    if "def " in text_sample or "class " in text_sample:
-        return "code"
-    elif "|" in text_sample and "-" in text_sample:
-        return "table"
-    elif "\n\n" in text_sample:
-        return "paragraph"
-    else:
-        return "raw"
+#     if "def " in text_sample or "class " in text_sample:
+#         return "code"
+#     elif "|" in text_sample and "-" in text_sample:
+#         return "table"
+#     elif "\n\n" in text_sample:
+#         return "paragraph"
+#     else:
+#         return "raw"
 
 
-# ---------------------------------------------------
-# ⚙️ Step 2: Get Adaptive Splitter
-# ---------------------------------------------------
+# # ---------------------------------------------------
+# # ⚙️ Step 2: Get Adaptive Splitter
+# # ---------------------------------------------------
 
-def get_splitter(doc_type: str) -> RecursiveCharacterTextSplitter:
-    """
-    Returns a RecursiveCharacterTextSplitter based on document type.
-    """
+# def get_splitter(doc_type: str) -> RecursiveCharacterTextSplitter:
+#     """
+#     Returns a RecursiveCharacterTextSplitter based on document type.
+#     """
 
-    if doc_type == "code":
-        return RecursiveCharacterTextSplitter(
-            chunk_size=300,
-            chunk_overlap=50,
+#     if doc_type == "code":
+#         return RecursiveCharacterTextSplitter(
+#             chunk_size=300,
+#             chunk_overlap=50,
+#             separators=["\n\n", "\n", " ", ""]
+#         )
+
+#     elif doc_type == "table":
+#         return RecursiveCharacterTextSplitter(
+#             chunk_size=200,
+#             chunk_overlap=20,
+#             separators=["\n", " ", ""]
+#         )
+
+#     else:  # paragraph / raw / mixed
+#         return RecursiveCharacterTextSplitter(
+#             chunk_size=500,
+#             chunk_overlap=100,
+#             separators=[
+#                 "\n\n",   # paragraphs
+#                 "\n",     # lines
+#                 ". ",     # sentences
+#                 " ",      # words
+#                 ""        # fallback
+#             ]
+#         )
+
+
+# # ---------------------------------------------------
+# # ✂️ Step 3: Base Recursive Chunking
+# # ---------------------------------------------------
+
+# def recursive_chunk(text: str) -> List[str]:
+#     """
+#     Performs adaptive recursive chunking.
+#     """
+
+#     doc_type = detect_doc_type(text)
+#     splitter = get_splitter(doc_type)
+
+#     chunks = splitter.split_text(text)
+#     return chunks
+
+
+# # ---------------------------------------------------
+# # 🔄 Step 4: Refinement (Optional but recommended)
+# # ---------------------------------------------------
+
+# def refine_chunks(chunks: List[str]) -> List[str]:
+#     """
+#     Further splits oversized chunks.
+#     """
+
+#     refined_chunks = []
+
+#     for chunk in chunks:
+#         if len(chunk) > 800:
+#             sub_splitter = RecursiveCharacterTextSplitter(
+#                 chunk_size=400,
+#                 chunk_overlap=80
+#             )
+#             sub_chunks = sub_splitter.split_text(chunk)
+#             refined_chunks.extend(sub_chunks)
+#         else:
+#             refined_chunks.append(chunk)
+
+#     return refined_chunks
+ 
+# def build_chunks(text: str) -> List[str]:
+#     """
+#     Main function to build chunks from text.
+#     """
+
+#     base_chunks = recursive_chunk(text)
+#     final_chunks = refine_chunks(base_chunks)
+
+#     return final_chunks
+
+
+
+# if __name__ == "__main__":
+#     import text_processing
+#     import os
+    
+#     # Test with sample text first
+# #     sample_text = """
+# # # Introduction
+# # This is a long document. It contains multiple sections.
+
+# # ## Section One
+# # This is paragraph one. It explains something important.
+
+# # This is paragraph two. It continues the explanation. It has multiple sentences.
+
+# # ## Section Two
+# # Another section starts here. It also has useful information.
+# # """
+
+#     # chunks = build_chunks(sample_text, max_tokens=500, overlap_ratio=0.12)
+
+#     # for i, chunk in enumerate(chunks):
+#     #     print(f"\n--- Chunk {i+1} ({count_tokens(chunk)} tokens) ---\n")
+#     #     print(chunk)
+#     folder_path = os.path.join(os.path.dirname(__file__), "../uploads")
+#     if os.path.exists(folder_path):
+#         docs = text_processing.load_folder(folder_path)
+#         if docs:
+#             print(f"\n\n=== Testing with PDF Files ({len(docs)} documents) ===")
+#             for doc in docs:
+#                 print(f"\n--- Processing: {doc['metadata']['file_name']} ---")
+#                 chunks = build_chunks(doc['text'])
+#                 print(f"Generated {len(chunks)} chunks")
+#                 if chunks:
+#                     for i in range(20):  # Print first 3 chunks as a sample
+#                         print(f"\n--- Sample Chunk {i + 1} ---\n")
+#                         print(chunks[i][:200] + "...")  # Print first 200 chars of each chunk
+#                     print(f"Sample Chunk:\n{chunks[1][:200]}...")
+
+def chunk_documents(self, documents: List[Any]) -> List[Any]:
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            length_function=len,
             separators=["\n\n", "\n", " ", ""]
         )
-
-    elif doc_type == "table":
-        return RecursiveCharacterTextSplitter(
-            chunk_size=200,
-            chunk_overlap=20,
-            separators=["\n", " ", ""]
-        )
-
-    else:  # paragraph / raw / mixed
-        return RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=100,
-            separators=[
-                "\n\n",   # paragraphs
-                "\n",     # lines
-                ". ",     # sentences
-                " ",      # words
-                ""        # fallback
-            ]
-        )
-
-
-# ---------------------------------------------------
-# ✂️ Step 3: Base Recursive Chunking
-# ---------------------------------------------------
-
-def recursive_chunk(text: str) -> List[str]:
-    """
-    Performs adaptive recursive chunking.
-    """
-
-    doc_type = detect_doc_type(text)
-    splitter = get_splitter(doc_type)
-
-    chunks = splitter.split_text(text)
-    return chunks
-
-
-# ---------------------------------------------------
-# 🔄 Step 4: Refinement (Optional but recommended)
-# ---------------------------------------------------
-
-def refine_chunks(chunks: List[str]) -> List[str]:
-    """
-    Further splits oversized chunks.
-    """
-
-    refined_chunks = []
-
-    for chunk in chunks:
-        if len(chunk) > 800:
-            sub_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=400,
-                chunk_overlap=80
-            )
-            sub_chunks = sub_splitter.split_text(chunk)
-            refined_chunks.extend(sub_chunks)
-        else:
-            refined_chunks.append(chunk)
-
-    return refined_chunks
- 
-def build_chunks(text: str) -> List[str]:
-    """
-    Main function to build chunks from text.
-    """
-
-    base_chunks = recursive_chunk(text)
-    final_chunks = refine_chunks(base_chunks)
-
-    return final_chunks
-
-
-
+        chunks = splitter.split_documents(documents)
+        print(f"[INFO] Split {len(documents)} documents into {len(chunks)} chunks.")
+        return chunks
 if __name__ == "__main__":
-    import text_processing
-    import os
-    
-    # Test with sample text first
-#     sample_text = """
-# # Introduction
-# This is a long document. It contains multiple sections.
-
-# ## Section One
-# This is paragraph one. It explains something important.
-
-# This is paragraph two. It continues the explanation. It has multiple sentences.
-
-# ## Section Two
-# Another section starts here. It also has useful information.
-# """
-
-    # chunks = build_chunks(sample_text, max_tokens=500, overlap_ratio=0.12)
-
-    # for i, chunk in enumerate(chunks):
-    #     print(f"\n--- Chunk {i+1} ({count_tokens(chunk)} tokens) ---\n")
-    #     print(chunk)
+    from text_processing import load_folder
     folder_path = os.path.join(os.path.dirname(__file__), "../uploads")
     if os.path.exists(folder_path):
-        docs = text_processing.load_folder(folder_path)
+        docs = load_folder(folder_path)
         if docs:
             print(f"\n\n=== Testing with PDF Files ({len(docs)} documents) ===")
             for doc in docs:
                 print(f"\n--- Processing: {doc['metadata']['file_name']} ---")
-                chunks = build_chunks(doc['text'])
+                chunks = chunk_documents(docs)
                 print(f"Generated {len(chunks)} chunks")
                 if chunks:
                     for i in range(20):  # Print first 3 chunks as a sample
