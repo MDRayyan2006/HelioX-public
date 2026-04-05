@@ -1,4 +1,5 @@
-
+"""approx taking 5-10s per 1000 chunks on CPU, can be reduced to 1-2s with GPU and batch processing"""
+"""need to be optimized for large documents, currently it can be slow due to the semantic similarity calculations and embedding generation, we can optimize it by using batch processing for embeddings and parallel processing for similarity calculations"""
 
 # -----------------------------
 # IMPORT STAGES
@@ -29,11 +30,12 @@ def run_pipeline(
     """
 
     # Stage 1 — Structural
-    stage1_chunks = build_chunks(
-        text,
-        max_tokens=max_tokens,
-        overlap_ratio=overlap_ratio
-    )
+    # stage1_chunks = build_chunks(
+    #     text,
+    #     max_tokens=max_tokens,
+    #     overlap_ratio=overlap_ratio
+    # )/
+    stage1_chunks = build_chunks(text)
 
     # Stage 2 — Semantic
     stage2_chunks = semantic_refine_chunks(
@@ -102,7 +104,8 @@ if __name__ == "__main__":
         loadr_result=run_pipeline(doc['text'], source=doc['metadata']['file_name'])
         print(f"\n--- Processed {doc['metadata']['file_name']} ---")
         print(f"Generated {len(loadr_result)} chunks with metadata enrichment.")
-        print(f"Sample Chunk:\n{loadr_result[0]['text'][:200]}...")  # Print first 200 chars of the first chunk
+        for i in range(min(3, len(loadr_result))):  # Print first 3 chunks as a sample
+            print(f"Sample Chunk:\n{loadr_result[i]['text']}")  # Print first 200 chars of each chunk
 
     # for doc in docs:
     #     print(f"\n--- Processing {doc['metadata']['file_name']} ---")
