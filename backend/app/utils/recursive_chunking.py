@@ -32,15 +32,15 @@
 
 # # def split_headings(text:str) -> List[str]:
    
-# #     pattern = r'(?=\n#{1,6}\s)|(?=\n[A-Z][A-Z\s]{5,}\n)'#using regex to find pattern which can form headings
-# #     sections = re.split(pattern, text)
-# #     return [s.strip() for s in sections if s.strip()]#saving in list and removing empty sections and extra whitespace
+    pattern = r'(?=\n#{1,6}\s)|(?=\n[A-Z][A-Z\s]{5,}\n)'#using regex to find pattern which can form headings
+    sections = re.split(pattern, text)
+    return [s.strip() for s in sections if s.strip()]#saving in list and removing empty sections and extra whitespace
 
 
-# # def split_paragraphs(text:str) -> List[str]:
-# #     # Split text into paragraphs based on double newlines
-# #     paragraphs = text.split('\n\n')
-# #     return [p.strip() for p in paragraphs if p.strip()]
+def split_paragraphs(text:str) -> List[str]:
+    # Split text into paragraphs based on double newlines
+    paragraphs = text.split('\n\n')
+    return [p.strip() for p in paragraphs if p.strip()]
 
 
 # # def build_chunks(
@@ -359,23 +359,25 @@ def build_chunks(text: str) -> List[str]:
 
 
 if __name__ == "__main__":
-    sample_text = """
-# Introduction
-This is a long document. It contains multiple sections.
+    import text_processing
+    import os
+    
+    # Test with sample text first
+#     sample_text = """
+# # Introduction
+# This is a long document. It contains multiple sections.
 
-## Section One
-This is paragraph one. It explains something important.
+# ## Section One
+# This is paragraph one. It explains something important.
 
-This is paragraph two. It continues the explanation.
+This is paragraph two. It continues the explanation. It has multiple sentences.
 
-## Section Two
-Another section starts here. It also has useful information.
-"""
+# ## Section Two
+# Another section starts here. It also has useful information.
+# """
 
-    chunks = build_chunks(sample_text)
+    chunks = build_chunks(sample_text, max_tokens=500, overlap_ratio=0.12)
 
-    for i, c in enumerate(chunks):
-        print(f"\n--- Chunk {i+1} ---\n")
-        print(c)
-
-
+    for i, chunk in enumerate(chunks):
+        print(f"\n--- Chunk {i+1} ({count_tokens(chunk)} tokens) ---\n")
+        print(chunk)
