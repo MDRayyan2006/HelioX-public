@@ -1,0 +1,9 @@
+sentence_transformers
+typing
+tiktoken
+nltk
+PyMuPDF
+sklearn
+numpy
+uuid
+
