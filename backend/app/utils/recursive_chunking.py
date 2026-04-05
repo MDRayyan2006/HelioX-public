@@ -1,5 +1,7 @@
 # # import re 
 # # from typing import List
+from typing import List, Any
+import os
 
 
 # # try :
@@ -396,30 +398,52 @@ Author: HelioX Pipeline
 #                         print(chunks[i][:200] + "...")  # Print first 200 chars of each chunk
 #                     print(f"Sample Chunk:\n{chunks[1][:200]}...")
 
-def chunk_documents(self, documents: List[Any]) -> List[Any]:
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            length_function=len,
-            separators=["\n\n", "\n", " ", ""]
-        )
-        chunks = splitter.split_documents(documents)
-        print(f"[INFO] Split {len(documents)} documents into {len(chunks)} chunks.")
-        return chunks
+def chunk_documents(documents, chunk_size=500, chunk_overlap=100):
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        separators=["\n\n", "\n", " ", ""]
+    )
+    chunks = splitter.split_documents(documents)
+    print(f"[INFO] Split {len(documents)} documents into {len(chunks)} chunks.")
+    return chunks
+
+
 if __name__ == "__main__":
     from text_processing import load_folder
+    from langchain_core.documents import Document
+    import os
+    
     folder_path = os.path.join(os.path.dirname(__file__), "../uploads")
     if os.path.exists(folder_path):
         docs = load_folder(folder_path)
         if docs:
             print(f"\n\n=== Testing with PDF Files ({len(docs)} documents) ===")
+            
+            # Convert to LangChain Documents
+            langchain_docs = []
             for doc in docs:
-                print(f"\n--- Processing: {doc['metadata']['file_name']} ---")
-                chunks = chunk_documents(docs)
-                print(f"Generated {len(chunks)} chunks")
-                if chunks:
-                    for i in range(20):  # Print first 3 chunks as a sample
-                        print(f"\n--- Sample Chunk {i + 1} ---\n")
-                        print(chunks[i][:200] + "...")  # Print first 200 chars of each chunk
-                    print(f"Sample Chunk:\n{chunks[1][:200]}...")
+                langchain_doc = Document(
+                    page_content=doc['text'],
+                    metadata=doc['metadata']
+                )
+                langchain_docs.append(langchain_doc)
+            
+            # Chunk the documents
+            chunks = chunk_documents(langchain_docs, chunk_size=500, chunk_overlap=100)
+            
+            print(f"\nGenerated {len(chunks)} total chunks")
+            
+            # Display sample chunks
+            if chunks:
+                num_samples = min(3, len(chunks))  # Show first 3 chunks
+                for i in range(num_samples):
+                    print(f"\n--- Sample Chunk {i + 1} ---")
+                    print(f"Content: {chunks[i].page_content[:200]}...")
+                    print(f"Metadata: {chunks[i].metadata}")
+    else:
+        print(f"Uploads folder not found at: {folder_path}")
                     
