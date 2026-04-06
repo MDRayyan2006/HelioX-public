@@ -6,4 +6,6 @@ PyMuPDF
 sklearn
 numpy
 uuid
+langchain-core
+langchain-text-splitters
 
