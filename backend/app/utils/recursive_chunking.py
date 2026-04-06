@@ -1,5 +1,5 @@
 # def chunk_documents(documents, chunk_size=500, chunk_overlap=100):
-#     from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
     
 #     splitter = RecursiveCharacterTextSplitter(
 #         chunk_size=chunk_size,
@@ -49,9 +49,25 @@
 
 import os
 import re
+from importlib import import_module
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from concurrent.futures import ProcessPoolExecutor
+
+
+def _get_recursive_splitter():
+    for module_name in ("langchain_text_splitters", "langchain.text_splitter"):
+        try:
+            module = import_module(module_name)
+            return getattr(module, "RecursiveCharacterTextSplitter")
+        except (ImportError, AttributeError):
+            continue
+    raise ImportError(
+        "RecursiveCharacterTextSplitter is not available. "
+        "Install 'langchain-text-splitters' or use a compatible 'langchain' version."
+    )
+
+
+RecursiveCharacterTextSplitter = _get_recursive_splitter()
 
 
 def clean_text(text: str) -> str:
