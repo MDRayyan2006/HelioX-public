@@ -13,6 +13,11 @@ from qdrant_client.models import VectorParams, Distance, PointStruct
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk as es_bulk
 
+
+# PostgreSQL
+import psycopg2
+from psycopg2.extras import execute_values
+
 # Redis
 import redis
 
@@ -23,7 +28,10 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 
+
+
 class RAGPipeline:
+    _UUID_NAMESPACE = uuid.NAMESPACE_URL
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
@@ -32,8 +40,14 @@ class RAGPipeline:
         es_host: str = "https://localhost:9200",
         redis_host: str = "localhost",
         redis_port: int = 6379,
+        pg_host: str = "localhost",
+        pg_port: int = 5432,
+        pg_db: str = "postgres",
+        pg_user: str = "postgres",
+        pg_password: str = "1234",
         embedding_batch_size: int = 64,
         qdrant_batch_size: int = 100,
+        
     ):
         self.embedding_batch_size = embedding_batch_size
         self.qdrant_batch_size = qdrant_batch_size
@@ -73,6 +87,20 @@ class RAGPipeline:
         # ── spaCy NER ─────────────────────────────────────────────────────
         logger.info("Loading spaCy model...")
         self.nlp = spacy.load("en_core_web_sm")
+
+
+
+        # ── PostgreSQL ────────────────────────────────────────────────────
+        logger.info("Connecting to PostgreSQL at %s:%d/%s", pg_host, pg_port, pg_db)
+        self.pg_conn = psycopg2.connect(
+            host=pg_host,
+            port=pg_port,
+            dbname=pg_db,
+            user=pg_user,
+            password=pg_password,
+        )
+        self.pg_conn.autocommit = False
+        self._init_postgres()
 
     # ──────────────────────────────────────────────────────────────────────
     # INIT
@@ -125,11 +153,48 @@ class RAGPipeline:
             logger.info("Redis connection OK")
         except redis.ConnectionError as exc:
             raise RuntimeError("Cannot connect to Redis") from exc
+    def _init_postgres(self) -> None:
+        """
+        Create the raw_chunks table if it doesn't exist.
+ 
+        Schema
+        ------
+        chunk_id   : PRIMARY KEY — shared UUID across all stores
+        text       : raw chunk text
+        metadata   : arbitrary JSON from the source document
+        source     : convenience column extracted from metadata["source"]
+        created_at : insert timestamp (UTC)
+        """
+        with self.pg_conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raw_chunks (
+                    chunk_id   UUID        PRIMARY KEY,
+                    text       TEXT        NOT NULL,
+                    metadata   JSONB       NOT NULL DEFAULT '{}',
+                    source     TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_raw_chunks_source
+                    ON raw_chunks (source);
+                """
+            )
+        self.pg_conn.commit()
+        logger.info("PostgreSQL table 'raw_chunks' ready")
+ 
 
     # ──────────────────────────────────────────────────────────────────────
     # HELPERS
     # ──────────────────────────────────────────────────────────────────────
 
+
+
+
+    @classmethod
+    def _make_chunk_id(cls, text: str, metadata: Dict) -> str:
+        source = metadata.get("source", "")
+        fingerprint = f"{source}::{text}"
+        return str(uuid.uuid5(cls._UUID_NAMESPACE, fingerprint))
     @staticmethod
     def _safe_metadata(metadata: Any) -> Dict:
         """Ensure metadata is JSON-serialisable (drop non-serialisable values)."""
@@ -189,11 +254,11 @@ class RAGPipeline:
         qdrant_points: List[PointStruct] = []
         es_actions: List[Dict] = []
         redis_pipeline = self.redis.pipeline(transaction=False)
+        pg_rows: List[tuple] = []  # (chunk_id, text, metadata_json, source)
 
         for i, chunk in enumerate(chunks):
             # Stable UUID per chunk (str for ES/Redis, UUID obj for Qdrant)
-            chunk_uuid = uuid.uuid4()
-            chunk_id_str = str(chunk_uuid)
+            chunk_id_str = self._make_chunk_id(chunk.page_content, self._safe_metadata(getattr(chunk, "metadata", {})))
             text = chunk.page_content
             metadata = self._safe_metadata(getattr(chunk, "metadata", {}))
 
@@ -236,6 +301,14 @@ class RAGPipeline:
                 "metadata": metadata,
             }
             redis_pipeline.set(f"chunk:{chunk_id_str}", json.dumps(profile))
+            pg_rows.append((
+                chunk_id_str,
+                text,
+                json.dumps(metadata),
+                metadata.get("source"),
+            ))
+           
+ 
 
         # ── 3. Upload to Qdrant (batched) ─────────────────────────────────
         logger.info("Uploading %d points to Qdrant...", len(qdrant_points))
@@ -257,9 +330,32 @@ class RAGPipeline:
         # ── 5. Flush Redis pipeline ───────────────────────────────────────
         logger.info("Flushing %d profiles to Redis...", len(qdrant_points))
         redis_pipeline.execute()
-
+         # ── 6. Bulk-insert raw chunks into PostgreSQL ─────────────────────
+         
         logger.info("✅ Pipeline complete — %d chunks processed.", total)
-
+        logger.info("Inserting %d raw chunks into PostgreSQL...", len(pg_rows))
+        try:
+            with self.pg_conn.cursor() as cur:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO raw_chunks (chunk_id, text, metadata, source)
+                    VALUES %s
+                    ON CONFLICT (chunk_id) DO UPDATE
+                        SET text     = EXCLUDED.text,
+                            metadata = EXCLUDED.metadata,
+                            source   = EXCLUDED.source
+                    """,
+                    pg_rows,
+                )
+            self.pg_conn.commit()
+            logger.info("  PostgreSQL: inserted/updated %d rows", len(pg_rows))
+        except Exception as exc:
+            self.pg_conn.rollback()
+            logger.error("PostgreSQL insert failed, rolled back: %s", exc)
+            raise
+ 
+        logger.info("✅ Pipeline complete — %d chunks processed.", total)
     # ──────────────────────────────────────────────────────────────────────
     # RETRIEVAL HELPERS (bonus — useful for querying later)
     # ──────────────────────────────────────────────────────────────────────
@@ -268,7 +364,31 @@ class RAGPipeline:
         """Retrieve a chunk profile from Redis by chunk ID."""
         raw = self.redis.get(f"chunk:{chunk_id}")
         return json.loads(raw) if raw else None
-
+    def get_raw_chunk(self, chunk_id: str) -> Optional[Dict]:
+        """Retrieve the original raw chunk text + metadata from PostgreSQL."""
+        with self.pg_conn.cursor() as cur:
+            cur.execute(
+                "SELECT chunk_id, text, metadata, source, created_at "
+                "FROM raw_chunks WHERE chunk_id = %s",
+                (chunk_id,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "chunk_id":   str(row[0]),
+            "text":       row[1],
+            "metadata":   row[2],
+            "source":     row[3],
+            "created_at": row[4].isoformat(),
+        }
+    def __del__(self) -> None:
+        try:
+            if self.pg_conn and not self.pg_conn.closed:
+                self.pg_conn.close()
+                logger.info("PostgreSQL connection closed")
+        except Exception:
+            pass
     def search_similar(self, query: str, top_k: int = 5) -> List[Dict]:
         """Dense vector search via Qdrant."""
         vector = self.model.encode(query, normalize_embeddings=True).tolist()
@@ -322,9 +442,26 @@ if __name__ == "__main__":
     docs = load_folder(folder_path)
     chunks = build_chunks(docs)
 
-    pipeline = RAGPipeline()  # uses cloud defaults baked into constructor
+    pipeline = RAGPipeline(
+        # qdrant cloud defaults already set; override pg creds for your local instance:
+        pg_host="localhost",
+        pg_port=5432,
+        pg_db="postgres",
+        pg_user="postgres",
+        pg_password="1234",
+    )
+      # uses cloud defaults baked into constructor
     pipeline.process_chunks(chunks)
-
+    chunk_ids = [
+        pipeline._make_chunk_id(
+            c.page_content,
+            pipeline._safe_metadata(c.metadata)
+        )
+        for c in chunks
+    ]
+    print("\n[DEBUG] Deterministic chunk IDs:")
+    for cid, c in zip(chunk_ids, chunks):
+        print(f"  {cid}  ←  {c.page_content[:60]!r}")
     # Example queries
     print("\n--- Dense search ---")
     for r in pipeline.search_similar("karthik", top_k=2):
@@ -336,9 +473,28 @@ if __name__ == "__main__":
 
     print("\n--- Chunk profile from Redis ---")
     # Grab first chunk_id from Qdrant to demo profile retrieval
-    scroll_result, _ = pipeline.qdrant.scroll(
-        collection_name=pipeline.collection_name, limit=1
-    )
-    if scroll_result:
-        cid = str(scroll_result[0].id)
-        print(pipeline.get_chunk_profile(cid))
+    # scroll_result, _ = pipeline.qdrant.scroll(
+    #     collection_name=pipeline.collection_name, limit=1
+    # )
+    # # if scroll_result:
+    # #     cid = str(scroll_result[0].id)
+    # #     print(pipeline.get_chunk_profile(cid))
+    
+    # if scroll_result:
+    #     cid = str(scroll_result[0].id)
+ 
+    #     print("\n--- Chunk profile from Redis ---")
+    #     print(pipeline.get_chunk_profile(cid))
+ 
+    #     print("\n--- Raw chunk from PostgreSQL ---")
+    #     print(pipeline.get_raw_chunk(cid))
+    for cid in chunk_ids:
+        print(f"\n{'='*60}")
+        print(f"chunk_id: {cid}")
+ 
+        print("\n  [Redis]  Chunk profile →")
+        print(" ", pipeline.get_chunk_profile(cid))
+ 
+        print("\n  [PG]     Raw chunk →")
+        print(" ", pipeline.get_raw_chunk(cid))
+ 
