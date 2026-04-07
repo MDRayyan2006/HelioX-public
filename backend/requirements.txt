@@ -8,4 +8,10 @@ numpy
 uuid
 langchain-core
 langchain-text-splitters
-
+qdrant_client
+json
+logging
+spacy
+redis
+elasticsearch
+psycopg2
