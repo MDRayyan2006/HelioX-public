@@ -4,10 +4,11 @@
 # -----------------------------
 # IMPORT STAGES
 # -----------------------------
-from recursive_chunking import build_chunks
+from recursive_chunking import chunk_documents
 from semantic_refinement import semantic_refine_chunks
 from Metadata_Enrichment import enrich_chunks
 from text_processing import load_folder
+from langchain_core.documents import Document
 import os
 
 # -----------------------------
@@ -29,17 +30,30 @@ def run_pipeline(
     3. Metadata Enrichment
     """
 
+    # Convert text to Document format for chunk_documents
+    doc = Document(
+        page_content=text,
+        metadata={"source": source, "file_name": source}
+    )
+    
     # Stage 1 — Structural
     # stage1_chunks = build_chunks(
     #     text,
     #     max_tokens=max_tokens,
     #     overlap_ratio=overlap_ratio
     # )/
-    stage1_chunks = build_chunks(text)
+    stage1_chunks = chunk_documents(
+        [doc],  # chunk_documents expects a list of documents
+        chunk_size=max_tokens,
+        chunk_overlap=int(max_tokens * overlap_ratio)
+    )
+    
+    # Extract text from Document objects for next stages
+    stage1_texts = [chunk.page_content for chunk in stage1_chunks]
 
     # Stage 2 — Semantic
     stage2_chunks = semantic_refine_chunks(
-        stage1_chunks,
+        stage1_texts,
         similarity_threshold=similarity_threshold,
         max_tokens=max_tokens,
         overlap_ratio=overlap_ratio
@@ -61,9 +75,16 @@ def debug_pipeline(text: str):
     """
     Returns intermediate outputs (very useful for tuning)
     """
+    
+    # Convert text to Document format
+    doc = Document(
+        page_content=text,
+        metadata={"source": "debug", "file_name": "debug"}
+    )
 
-    stage1 = build_chunks(text)
-    stage2 = semantic_refine_chunks(stage1)
+    stage1 = chunk_documents([doc])
+    stage1_texts = [chunk.page_content for chunk in stage1]
+    stage2 = semantic_refine_chunks(stage1_texts)
     stage3 = enrich_chunks(stage2)
 
     return {

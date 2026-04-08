@@ -1,9 +1,13 @@
 sentence_transformers
-typing
 tiktoken
 nltk
 PyMuPDF
-sklearn
+scikit-learn
 numpy
-uuid
-
+langchain-core
+langchain-text-splitters
+qdrant_client
+spacy
+redis
+elasticsearch
+psycopg2-binary
