@@ -60,4 +60,4 @@ if __name__ == "__main__":
     for doc in docs:
         print(f"\n--- {doc['metadata']['file_name']} ---")
         print(f"Pages: {doc['metadata']['num_pages']}, Size: {doc['metadata']['file_size']} bytes")
-        print(f"Sample Text:\n{doc['text'][:500]}...")
+        print(f"Sample Text:\n{doc['text']}...")
