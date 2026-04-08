@@ -1,4 +1,4 @@
-import asyncio
+# import asyncio
 import concurrent.futures
 from typing import List, Dict, Any, Optional
 import uuid, json, logging, os
@@ -323,56 +323,16 @@ class RAGPipeline:
 # ── Main ─────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     from text_processing import load_folder
-    from chunking import run_pipeline
-    from langchain_core.documents import Document
+    from recursive_chunking import chunk_documents
     import os, time
 
     folder_path = os.path.join(os.path.dirname(__file__), "../uploads")
     docs = load_folder(folder_path)
-    
-    if not docs:
-        print("[WARNING] No documents found in uploads folder!")
-        exit(1)
-    
-    print(f"\n[INFO] Loaded {len(docs)} document(s)")
-    
-    # Collect ALL chunks from ALL documents
-    all_chunks = []
-    for doc in docs:
-        print(f"\n[INFO] Processing: {doc['metadata']['file_name']}")
-        # run_pipeline returns list of enriched chunk dictionaries
-        enriched_chunks = run_pipeline(
-            text=doc['text'], 
-            source=doc['metadata']['file_name']
-        )
-        print(f"[INFO] Generated {len(enriched_chunks)} chunks")
-        
-        # Convert each chunk dict to LangChain Document
-        for chunk_dict in enriched_chunks:
-            langchain_doc = Document(
-                page_content=chunk_dict['text'],
-                metadata=chunk_dict  # Include all metadata (chunk_id, source, type, embedding, etc.)
-            )
-            all_chunks.append(langchain_doc)
-    
-    print(f"\n[INFO] Total chunks across all documents: {len(all_chunks)}")
-    
-    if not all_chunks:
-        print("[WARNING] No chunks generated!")
-        exit(1)
-    
-    # Initialize and run RAG Pipeline
+    chunks = chunk_documents(docs)
+
     pipeline = RAGPipeline()
-    pipeline.process_chunks(all_chunks)
+    pipeline.process_chunks(chunks)
 
     print("\n--- Hybrid search (best retrieval) ---")
     for r in pipeline.search_hybrid("projects", top_k=3, alpha=0.6):
-        print(f"  [{r['rrf_score']:.4f}] {r.get('text','')[:100]}...")
-    
-    print("\n--- Dense search ---")
-    for r in pipeline.search_similar("AI", top_k=2):
-        print(f"  [{r['score']:.4f}] {r.get('text','')[:100]}...")
-    
-    print("\n--- BM25 search ---")
-    for r in pipeline.search_bm25("computer science", top_k=2):
-        print(f"  [{r['score']:.4f}] {r.get('text','')[:100]}...")
+        print(f"  [{r['rrf_score']:.4f}] {r.get('text','')}")
